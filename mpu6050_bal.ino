@@ -8,6 +8,12 @@
 #include "I2Cdev.h"
 #include <PID_v1.h> //From https://github.com/br3ttb/Arduino-PID-Library/blob/master/PID_v1.h
 #include "MPU6050_6Axis_MotionApps20.h" //https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
+#include "SoftwareSerial.h"
+SoftwareSerial BTSerial(3, 10); // blue tx, blue rx
+char sendstr[128];
+int sendstrpos = 0; 
+unsigned long lastAvailableTime = millis();
+
 //A5 => SCL
 //A4 => SDA
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -53,6 +59,8 @@ int BOUND=20;
 int potms[] = {A0, A1, A2};
 const int POTSNUM = 3;
 
+void motorControlDrive(int who, char dir);
+void motorControlAll();
 
 PID pid = PID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
@@ -69,6 +77,7 @@ void setup() {
        
     Serial.begin(115200);
     serprintln("serial initialized");
+    BTSerial.begin(9600);
 
     pid.SetMode(AUTOMATIC);
     pid.SetSampleTime(10);
@@ -149,11 +158,37 @@ void setup() {
 }
 
 
-void loop() {
+void loop() { 
+  loop_bt();;
   //loop_simple();
   //loop_motor();
-  loop_balance();
+  //loop_balance();
 }
+
+void loop_bt() {
+  if (BTSerial.available()){
+        int c = BTSerial.read();
+        Serial.write(c);            
+  }
+  // Keep reading from Arduino Serial Monitor and send to HC-05
+  if (Serial.available()){
+    int c = Serial.read();
+    sendstr[sendstrpos++] =c;
+    sendstr[sendstrpos] =0;    
+    lastAvailableTime = millis();    
+  }else {
+    if (sendstrpos && (millis()-lastAvailableTime)>500  ) {
+      for (int i = 0; i < sendstrpos; i++)
+        BTSerial.write(sendstr[i]);   
+      BTSerial.write('\r');  
+      BTSerial.write('\n');
+      Serial.println(sendstr);
+      sendstrpos = 0;
+    }
+    
+  }
+}
+
 void loop_simple() {
   int who = 1;
    if (Serial.available()){
@@ -218,7 +253,8 @@ void loop_balance() {
      if (mpuInterrupt){
         serprintln("int="+String(mpuInterrupt)+" i=" +String(input)+" o=" + String(output));
      }
-        
+
+  }
         
         
       // reset interrupt flag and get INT_STATUS byte
@@ -272,6 +308,7 @@ void motorControl(int who) {
     motorControlDrive(who, 'S');
   }
 }
+
 void motorControlDrive(int who, char dir){
   int pin1 = motorPins[who][0];
   int pin2 = motorPins[who][1];
