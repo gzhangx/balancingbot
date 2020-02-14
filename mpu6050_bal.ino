@@ -9,7 +9,9 @@
 #include <PID_v1.h> //From https://github.com/br3ttb/Arduino-PID-Library/blob/master/PID_v1.h
 #include "MPU6050_6Axis_MotionApps20.h" //https://github.com/jrowberg/i2cdevlib/tree/master/Arduino/MPU6050
 #include "SoftwareSerial.h"
-SoftwareSerial BTSerial(3, 10); // blue tx, blue rx
+const int BLUEINT = 2;
+const int MPUINT = 3;
+SoftwareSerial BTSerial(BLUEINT,10); // blue tx, blue rx
 char sendstr[128];
 int sendstrpos = 0; 
 unsigned long lastAvailableTime = millis();
@@ -19,7 +21,6 @@ unsigned long lastAvailableTime = millis();
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
 #endif
-#define INTERRUPT_PIN 3  // use pin 2 on Arduino Uno & most boards
 MPU6050 mpu;
 
 // MPU control/status vars
@@ -28,7 +29,7 @@ uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer[64]; // FIFO storage buffer
+uint8_t fifoBuffer[128]; // FIFO storage buffer, for me it is 42
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
@@ -42,7 +43,7 @@ double Kp = 100;
 double Kd = 0.3; 
 double Ki = 350;
 
-double input, output;
+double input, output, oldoutput=0;
 /******End of values setting*********/
 
 int motorCounter = 0;
@@ -106,7 +107,6 @@ void setup() {
     serprintln(F("Initializing I2C devices..."));
     
     mpu.initialize();
-    //pinMode(INTERRUPT_PIN, INPUT);
 
      // verify connection
     serprintln(F("Testing device connections..."));
@@ -131,7 +131,7 @@ void setup() {
         serprintln(F("Enabling DMP..."));
         mpu.setDMPEnabled(true);
 
-        attachInterrupt(digitalPinToInterrupt(2), dmpDataReady, RISING);
+        attachInterrupt(digitalPinToInterrupt(MPUINT), dmpDataReady, RISING);
 
         // enable Arduino interrupt detection
         Serial.print(F("Enabling interrupt detection (Arduino external interrupt "));
@@ -159,10 +159,10 @@ void setup() {
 
 
 void loop() { 
-  loop_bt();;
+  //loop_bt();;
   //loop_simple();
   //loop_motor();
-  //loop_balance();
+  loop_balance();
 }
 
 void loop_bt() {
@@ -174,6 +174,7 @@ void loop_bt() {
   if (Serial.available()){
     int c = Serial.read();
     sendstr[sendstrpos++] =c;
+    if (sendstrpos > 100) sendstrpos = 100;
     sendstr[sendstrpos] =0;    
     lastAvailableTime = millis();    
   }else {
@@ -228,6 +229,7 @@ void loop_motor() {
 
 void loop_balance() {
   if (!dmpReady) return;
+  loop_bt();
   motorCounter++;
   if (motorCounter>motorCounterMax)motorCounter=0;
   int potVal[POTSNUM];
@@ -239,9 +241,9 @@ void loop_balance() {
   //setpoint = map(potVal[2], 0, 1023, 180-BOUND, 180+BOUND);   
   //int pot_a2_val =  analogRead(POT_A2); //values 786 (or 642 for batt) to 0
        
-  motorControlAll();    
+  //motorControlAll();    
 
-  while (!mpuInterrupt && fifoCount < packetSize) 
+  if (!mpuInterrupt && fifoCount < packetSize) 
   {  
      pid.Compute();           
      motorSpeed[0] = output;
@@ -249,14 +251,11 @@ void loop_balance() {
         
      if (input<(setpoint - BOUND) || input> (setpoint+BOUND)){     
          motorSpeed[0] = motorSpeed[1] = 0;
-     }
-     if (mpuInterrupt){
-        serprintln("int="+String(mpuInterrupt)+" i=" +String(input)+" o=" + String(output));
-     }
-
+     }     
   }
         
-        
+
+        //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
       // reset interrupt flag and get INT_STATUS byte
       mpuInterrupt = false;
       mpuIntStatus = mpu.getIntStatus();
@@ -286,7 +285,12 @@ void loop_balance() {
         mpu.dmpGetGravity(&gravity, &q); //get value for gravity
         mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
         input = ((ypr[1] * 180)/M_PI) + 180;
+        if (output != oldoutput) {
+          oldoutput = output;
+          serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+        }
    }
+   //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
 }
 
 void motorControlAll() {
