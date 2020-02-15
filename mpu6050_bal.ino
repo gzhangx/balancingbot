@@ -78,7 +78,16 @@ void dmpDataReady()
 
 void serprintln(String s) {
   if (Serial) Serial.println(s);    
+  //for (int i = 0; i < s.length(); i++)
+        //BTSerial.write(s[i]);         
 }
+
+void blueReport(String s) {
+  for (int i = 0; i < s.length(); i++)
+    BTSerial.write(s[i]);
+  BTSerial.write('\n');
+}
+
 void setup() {
        
     Serial.begin(115200);
@@ -171,13 +180,13 @@ void loop() {
 }
 
 void btCmdReceived(String cmd, String name, String val) {
-  Serial.println("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
+  serprintln("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
   if (cmd == "kp") Kp = val.toDouble();
   if (cmd == "ki") Ki = val.toDouble();
   if (cmd == "kd") Kd = val.toDouble();
   if (cmd == "sp") {
     setpoint = val.toDouble();
-    Serial.println("SetPoint="+String(setpoint));
+    serprintln("SetPoint="+String(setpoint));
   }
 }
 char receiveStr[BT_BUF_LEN+16];
@@ -336,6 +345,7 @@ void loop_balance() {
         if (output != oldoutput) {
           oldoutput = output;
           serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+          blueReport("INPUT="+String(input));
         }
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
