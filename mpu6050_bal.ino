@@ -12,7 +12,8 @@
 const int BLUEINT = 2;
 const int MPUINT = 3;
 SoftwareSerial BTSerial(BLUEINT,10); // blue tx, blue rx
-char sendstr[128];
+const int BT_BUF_LEN=128;
+char sendstr[BT_BUF_LEN+16];
 int sendstrpos = 0; 
 unsigned long lastAvailableTime = millis();
 
@@ -29,7 +30,7 @@ uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
 uint16_t fifoCount;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer[128]; // FIFO storage buffer, for me it is 42
+uint8_t fifoBuffer[BT_BUF_LEN]; // FIFO storage buffer, for me it is 42
 
 // orientation/motion vars
 Quaternion q;           // [w, x, y, z]         quaternion container
@@ -40,8 +41,12 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 
 double setpoint= 172;    //bigger to empty side 
 double Kp = 100;
-double Kd = 0.3; 
 double Ki = 350;
+double Kd = 0.3; 
+
+double oldKp = 100;
+double oldKi = 350;
+double oldKd = 0.3;
 
 double input, output, oldoutput=0;
 /******End of values setting*********/
@@ -165,10 +170,46 @@ void loop() {
   loop_balance();
 }
 
-void loop_bt() {
-  if (BTSerial.available()){
+void btCmdReceived(String cmd, String name, String val) {
+  Serial.println("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
+  if (cmd == "kp") Kp = val.toDouble();
+  if (cmd == "ki") Ki = val.toDouble();
+  if (cmd == "kd") Kd = val.toDouble();
+  if (cmd == "sp") {
+    setpoint = val.toDouble();
+    Serial.println("SetPoint="+String(setpoint));
+  }
+}
+char receiveStr[BT_BUF_LEN+16];
+int receivePos = 0;
+String curBtCmd = "";
+String curBtName = "";
+void loop_bt() {  
+  while (BTSerial.available()){
         int c = BTSerial.read();
-        Serial.write(c);            
+        if (receivePos < BT_BUF_LEN) {
+          receiveStr[receivePos++] = (char)c;
+          receiveStr[receivePos] = 0;
+          if (c == ':') {
+            receiveStr[receivePos-1]=0;
+            if (curBtCmd == "") {
+              curBtCmd = receiveStr;
+            } else  {
+              curBtName = receiveStr; 
+            }
+            receivePos = 0;
+          }
+          if (c == '|') {            
+            receiveStr[receivePos-1]=0;            
+            receivePos = 0;
+            String val = receiveStr;
+            btCmdReceived(curBtCmd, curBtName, val);
+            curBtCmd = "";
+          }
+        }else {
+          receivePos = 0; //warning, over flow
+        }
+        //Serial.write(c);
   }
   // Keep reading from Arduino Serial Monitor and send to HC-05
   if (Serial.available()){
@@ -228,6 +269,13 @@ void loop_motor() {
 }
 
 void loop_balance() {
+  if (oldKp != Kp || oldKi != Ki || oldKd != Kd) {
+    Serial.println("Setting Kp="+String(Kp)+" Ki="+String(Ki)+" Kd="+String(Kd));
+    oldKp = Kp;
+    oldKi = Ki;
+    oldKd = Kd;
+    pid.SetTunings(Kp,Ki,Kd);
+  }
   if (!dmpReady) return;
   loop_bt();
   motorCounter++;
