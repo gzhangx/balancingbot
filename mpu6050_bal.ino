@@ -92,7 +92,8 @@ void actualStateBlueReport() {
   if (curWorkingBlueReportStr == "") return;
   if (curWorkingBlueReportStrProg < curWorkingBlueReportStr.length()){
      BTSerial.write(curWorkingBlueReportStr[curWorkingBlueReportStrProg++]);
-  }else {     
+  }else {
+    BTSerial.write('\n');
      curWorkingBlueReportStr = blueReportStr;     
      curWorkingBlueReportStrProg=0;
      blueReportStr = "";
