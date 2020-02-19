@@ -82,10 +82,28 @@ void serprintln(String s) {
         //BTSerial.write(s[i]);         
 }
 
+String blueReportStr = "";
+String curWorkingBlueReportStr = "";
+int curWorkingBlueReportStrProg=0;
+void actualStateBlueReport() {
+  if (curWorkingBlueReportStr == "") {
+    curWorkingBlueReportStr = blueReportStr;
+  }
+  if (curWorkingBlueReportStr == "") return;
+  if (curWorkingBlueReportStrProg < curWorkingBlueReportStr.length()){
+     BTSerial.write(curWorkingBlueReportStr[curWorkingBlueReportStrProg++]);
+  }else {     
+     curWorkingBlueReportStr = blueReportStr;     
+     curWorkingBlueReportStrProg=0;
+     blueReportStr = "";
+  }       
+}
+
 void blueReport(String s) {
-  for (int i = 0; i < s.length(); i++)
-    BTSerial.write(s[i]);
-  BTSerial.write('\n');
+  blueReportStr = s;  
+  //for (int i = 0; i < s.length(); i++)
+  //  BTSerial.write(s[i]);
+  //BTSerial.write('\n');
 }
 
 void setup() {
@@ -177,10 +195,11 @@ void loop() {
   //loop_simple();
   //loop_motor();
   loop_balance();
+  actualStateBlueReport();
 }
 
 void btCmdReceived(String cmd, String name, String val) {
-  serprintln("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
+  blueReport("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
   if (cmd == "kp") Kp = val.toDouble();
   if (cmd == "ki") Ki = val.toDouble();
   if (cmd == "kd") Kd = val.toDouble();
@@ -298,7 +317,7 @@ void loop_balance() {
   //setpoint = map(potVal[2], 0, 1023, 180-BOUND, 180+BOUND);   
   //int pot_a2_val =  analogRead(POT_A2); //values 786 (or 642 for batt) to 0
        
-  //motorControlAll();    
+  motorControlAll();    
 
   if (!mpuInterrupt && fifoCount < packetSize) 
   {  
