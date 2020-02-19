@@ -365,7 +365,7 @@ void loop_balance() {
         if (output != oldoutput) {
           oldoutput = output;
           serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
-          blueReport("INPUT="+String(input));
+          //blueReport("INPUT="+String(input));
         }
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
