@@ -68,8 +68,15 @@ const int POTSNUM = 3;
 void motorControlDrive(int who, char dir);
 void motorControlAll();
 
-PID pid = PID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 
+PID * createPid(){
+  PID * pid = new PID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+  pid->SetMode(AUTOMATIC);
+    pid->SetSampleTime(10);
+    pid->SetOutputLimits(-motorCounterMax, motorCounterMax);  
+    return pid;
+}
+PID *pid = createPid();
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady()
 {
@@ -113,9 +120,7 @@ void setup() {
     serprintln("serial initialized");
     BTSerial.begin(9600);
 
-    pid.SetMode(AUTOMATIC);
-    pid.SetSampleTime(10);
-    pid.SetOutputLimits(-motorCounterMax, motorCounterMax);  
+    
     
     for (int i = 0; i < POTSNUM; i++) {
       pinMode(potms[i], INPUT);
@@ -200,7 +205,7 @@ void loop() {
 }
 
 void btCmdReceived(String cmd, String name, String val) {
-  blueReport("cmd="+cmd+" name="+name+" val="+val+" vdbl="+String(val.toDouble()));
+  blueReport("cmd="+cmd+" val="+val);
   if (cmd == "kp") Kp = val.toDouble();
   if (cmd == "ki") Ki = val.toDouble();
   if (cmd == "kd") Kd = val.toDouble();
@@ -303,7 +308,8 @@ void loop_balance() {
     oldKp = Kp;
     oldKi = Ki;
     oldKd = Kd;
-    pid.SetTunings(Kp,Ki,Kd);
+    //pid.SetTunings(Kp,Ki,Kd);
+    pid = createPid();
   }
   if (!dmpReady) return;
   loop_bt();
@@ -322,7 +328,7 @@ void loop_balance() {
 
   if (!mpuInterrupt && fifoCount < packetSize) 
   {  
-     pid.Compute();           
+     pid->Compute();           
      motorSpeed[0] = output;
      motorSpeed[1] = output;
         
@@ -365,7 +371,7 @@ void loop_balance() {
         if (output != oldoutput) {
           oldoutput = output;
           serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
-          //blueReport("INPUT="+String(input));
+          blueReport("INPUT="+String(input)+ " " + String(output));
         }
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
