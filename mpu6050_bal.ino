@@ -41,8 +41,8 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 
 double setpoint= 172;    //bigger to empty side 
 double Kp = 100;
-double Ki = 350;
-double Kd = 0.3; 
+double Ki = 0.2;
+double Kd = 0; 
 
 double oldKp = 100;
 double oldKi = 350;
@@ -219,7 +219,7 @@ int receivePos = 0;
 String curBtCmd = "";
 String curBtName = "";
 void loop_bt() {  
-  while (BTSerial.available()){
+  if (BTSerial.available()){
         int c = BTSerial.read();
         if (receivePos < BT_BUF_LEN) {
           receiveStr[receivePos++] = (char)c;
@@ -302,6 +302,7 @@ void loop_motor() {
   motorControlAll();  
 }
 
+int calcCount = 0;
 void loop_balance() {
   if (oldKp != Kp || oldKi != Ki || oldKd != Kd) {
     Serial.println("Setting Kp="+String(Kp)+" Ki="+String(Ki)+" Kd="+String(Kd));
@@ -323,21 +324,23 @@ void loop_balance() {
   //setpoint = map(potVal[2], 0, 1023, 180-BOUND, 180+BOUND);   
   //int pot_a2_val =  analogRead(POT_A2); //values 786 (or 642 for batt) to 0       
 
-  Serial.println("pid compute" +String(input)+ " " + String(output) + " mpuint=" + String(mpuInterrupt) + " fcn=" + String(fifoCount));
-  if (!mpuInterrupt && fifoCount < packetSize) 
+  //Serial.println("pid compute" +String(input)+ " " + String(output) + " sp=" + String(setpoint) + " kp=" + String(Kp)+" ki=" + String(Ki) + " int=" +String(!mpuInterrupt)+ " filo=" +String(fifoCount)+ " packetSize="+String(packetSize)+ " can computer="+String(!mpuInterrupt && fifoCount < packetSize));
+  if ( (!mpuInterrupt && fifoCount < packetSize) || calcCount >3) 
   {      
-     pid.Compute();                
+     calcCount = 0;
+     pid.Compute();                     
      motorSpeed[0] = output;
      motorSpeed[1] = output;
-        
+
+     //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
      if (input<(setpoint - BOUND) || input> (setpoint+BOUND)){     
          motorSpeed[0] = motorSpeed[1] = 0;
      }     
   }
+  calcCount ++;
 
   motorControlAll();    
-
-  //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+  
   // reset interrupt flag and get INT_STATUS byte
   mpuInterrupt = false;
   mpuIntStatus = mpu.getIntStatus();
@@ -345,11 +348,12 @@ void loop_balance() {
   // get current FIFO count
   fifoCount = mpu.getFIFOCount();
       
-  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
+  if ((mpuIntStatus & 0x10) || fifoCount >= packetSize)
   {
       // reset so we can continue cleanly
       mpu.resetFIFO();
-      serprintln("FIFO overflow!");   
+      fifoCount = 0;
+      serprintln("FO!");   
   }
   else if (mpuIntStatus & 0x02)
   {
