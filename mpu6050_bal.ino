@@ -39,9 +39,9 @@ float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gra
 
  
 
-double setpoint= 172;    //bigger to empty side 
-double Kp = 100;
-double Ki = 0.2;
+double setpoint= 180;    //bigger to empty side 
+double Kp = 80;
+double Ki = 1;
 double Kd = 0; 
 
 double oldKp = 100;
@@ -52,8 +52,8 @@ double input, output, oldoutput=0;
 /******End of values setting*********/
 
 int motorCounter = 0;
-int motorCounterMax = 255;
-
+int motorCounterMax = 10;
+int mpuOutputMax = 255;
 int motorPins[][2] = {
   {8,9},
   {6, 7}
@@ -114,7 +114,7 @@ void setup() {
 
     pid.SetMode(AUTOMATIC);
     //pid.SetSampleTime(10);
-    pid.SetOutputLimits(-motorCounterMax, motorCounterMax);  
+    pid.SetOutputLimits(-mpuOutputMax, mpuOutputMax);  
     
     Serial.begin(115200);
     serprintln("serial initialized");
@@ -314,7 +314,7 @@ void loop_balance() {
   if (!dmpReady) return;
   loop_bt();
   motorCounter++;
-  if (motorCounter>motorCounterMax)motorCounter=0;
+  if (motorCounter>=motorCounterMax)motorCounter=0;
   int potVal[POTSNUM];
   for (int i = 0; i < POTSNUM; i++) {
     potVal[i] = analogRead(potms[i]);     
@@ -328,9 +328,10 @@ void loop_balance() {
   if ( (!mpuInterrupt && fifoCount < packetSize) || calcCount >3) 
   {      
      calcCount = 0;
-     pid.Compute();                     
-     motorSpeed[0] = output;
-     motorSpeed[1] = output;
+     pid.Compute();
+     int speed = (int)(output*motorCounterMax/mpuOutputMax);
+     motorSpeed[0] = speed;
+     motorSpeed[1] = speed;
 
      //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
      if (input<(setpoint - BOUND) || input> (setpoint+BOUND)){     
@@ -371,9 +372,10 @@ void loop_balance() {
       mpu.dmpGetGravity(&gravity, &q); //get value for gravity
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
       input = ((ypr[1] * 180)/M_PI) + 180;
-      if (output != oldoutput) {
+      //if (output != oldoutput) 
+      {
           oldoutput = output;
-          serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+          serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output)+ " speed="+String(motorSpeed[0])+" " + String(motorCounter)+"/"+String(motorCounterMax));
           blueReport("sp="+ String(setpoint)+ " kp="+String(Kp)+" ki="+String(Ki)+" kd="+String(Kd)+" INPUT="+String(input)+ " " + String(output));
       }
    }
