@@ -69,14 +69,7 @@ void motorControlDrive(int who, char dir);
 void motorControlAll();
 
 
-PID * createPid(){
-  PID * pid = new PID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
-  pid->SetMode(AUTOMATIC);
-    pid->SetSampleTime(10);
-    pid->SetOutputLimits(-motorCounterMax, motorCounterMax);  
-    return pid;
-}
-PID *pid = createPid();
+PID pid = PID(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
 volatile bool mpuInterrupt = false;     // indicates whether MPU interrupt pin has gone high
 void dmpDataReady()
 {
@@ -92,7 +85,9 @@ void serprintln(String s) {
 String blueReportStr = "";
 String curWorkingBlueReportStr = "";
 int curWorkingBlueReportStrProg=0;
+unsigned long lastBlueTime = millis();
 void actualStateBlueReport() {
+  if (millis() - lastBlueTime < 500) return;
   if (curWorkingBlueReportStr == "") {
     curWorkingBlueReportStr = blueReportStr;
   }
@@ -100,6 +95,7 @@ void actualStateBlueReport() {
   if (curWorkingBlueReportStrProg < curWorkingBlueReportStr.length()){
      BTSerial.write(curWorkingBlueReportStr[curWorkingBlueReportStrProg++]);
   }else {
+    lastBlueTime = millis();
     BTSerial.write('\n');
      curWorkingBlueReportStr = blueReportStr;     
      curWorkingBlueReportStrProg=0;
@@ -115,7 +111,11 @@ void blueReport(String s) {
 }
 
 void setup() {
-       
+
+    pid.SetMode(AUTOMATIC);
+    //pid.SetSampleTime(10);
+    pid.SetOutputLimits(-motorCounterMax, motorCounterMax);  
+    
     Serial.begin(115200);
     serprintln("serial initialized");
     BTSerial.begin(9600);
@@ -308,8 +308,7 @@ void loop_balance() {
     oldKp = Kp;
     oldKi = Ki;
     oldKd = Kd;
-    //pid.SetTunings(Kp,Ki,Kd);
-    pid = createPid();
+    pid.SetTunings(Kp,Ki,Kd);    
   }
   if (!dmpReady) return;
   loop_bt();
@@ -322,13 +321,12 @@ void loop_balance() {
   //Kp = potVal[0]+1;
   //Ki = potVal[1];
   //setpoint = map(potVal[2], 0, 1023, 180-BOUND, 180+BOUND);   
-  //int pot_a2_val =  analogRead(POT_A2); //values 786 (or 642 for batt) to 0
-       
-  motorControlAll();    
+  //int pot_a2_val =  analogRead(POT_A2); //values 786 (or 642 for batt) to 0       
 
+  Serial.println("pid compute" +String(input)+ " " + String(output) + " mpuint=" + String(mpuInterrupt) + " fcn=" + String(fifoCount));
   if (!mpuInterrupt && fifoCount < packetSize) 
-  {  
-     pid->Compute();           
+  {      
+     pid.Compute();                
      motorSpeed[0] = output;
      motorSpeed[1] = output;
         
@@ -336,43 +334,44 @@ void loop_balance() {
          motorSpeed[0] = motorSpeed[1] = 0;
      }     
   }
-        
 
-        //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
-      // reset interrupt flag and get INT_STATUS byte
-      mpuInterrupt = false;
-      mpuIntStatus = mpu.getIntStatus();
+  motorControlAll();    
 
-      // get current FIFO count
-      fifoCount = mpu.getFIFOCount();
+  //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
+  // reset interrupt flag and get INT_STATUS byte
+  mpuInterrupt = false;
+  mpuIntStatus = mpu.getIntStatus();
+
+  // get current FIFO count
+  fifoCount = mpu.getFIFOCount();
       
-      if ((mpuIntStatus & 0x10) || fifoCount == 1024)
-      {
-        // reset so we can continue cleanly
-        mpu.resetFIFO();
-        serprintln("FIFO overflow!");   
-      }
-      else if (mpuIntStatus & 0x02)
-      {
-        // wait for correct available data length, should be a VERY short wait
-        while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+  if ((mpuIntStatus & 0x10) || fifoCount == 1024)
+  {
+      // reset so we can continue cleanly
+      mpu.resetFIFO();
+      serprintln("FIFO overflow!");   
+  }
+  else if (mpuIntStatus & 0x02)
+  {
+      // wait for correct available data length, should be a VERY short wait
+      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
-        // read a packet from FIFO
-        mpu.getFIFOBytes(fifoBuffer, packetSize);
+      // read a packet from FIFO
+      mpu.getFIFOBytes(fifoBuffer, packetSize);
         
-        // track FIFO count here in case there is > 1 packet available
-        // (this lets us immediately read more without waiting for an interrupt)
-        fifoCount -= packetSize;
+      // track FIFO count here in case there is > 1 packet available
+      // (this lets us immediately read more without waiting for an interrupt)
+      fifoCount -= packetSize;
 
-        mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
-        mpu.dmpGetGravity(&gravity, &q); //get value for gravity
-        mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
-        input = ((ypr[1] * 180)/M_PI) + 180;
-        if (output != oldoutput) {
+      mpu.dmpGetQuaternion(&q, fifoBuffer); //get value for q
+      mpu.dmpGetGravity(&gravity, &q); //get value for gravity
+      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity); //get value for ypr
+      input = ((ypr[1] * 180)/M_PI) + 180;
+      if (output != oldoutput) {
           oldoutput = output;
           serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
-          blueReport("INPUT="+String(input)+ " " + String(output));
-        }
+          blueReport("sp="+ String(setpoint)+ " kp="+String(Kp)+" ki="+String(Ki)+" kd="+String(Kd)+" INPUT="+String(input)+ " " + String(output));
+      }
    }
    //serprintln("int="+String(mpuInterrupt) + " fifoCount=" + String(fifoCount)+"/"+String(packetSize)+" i=" +String(input)+" o=" + String(output));
 }
